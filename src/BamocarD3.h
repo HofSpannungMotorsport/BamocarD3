@@ -132,12 +132,6 @@ class BamocarD3 {
                 msgSendResult = _can.write(msg);
                 wait(0.000002);
             }
-
-            if (msgSendResult == 1) {
-                pcSerial.printf("Message send Successfully!\nmsg.id: 0x%x\nmsg.len: 0x%x\nmsg.data[0]: 0x%x\nmsg.data[1]: 0x%x\nmsg.data[2]: 0x%x\n\n", msg.id, msg.len, msg.data[0], msg.data[1], msg.data[2]);
-            } else {
-                pcSerial.printf("Message lost!\nmsg.id: 0x%x\nmsg.len: 0x%x\nmsg.data[0]: 0x%x\nmsg.data[1]: 0x%x\nmsg.data[2]: 0x%x\n\n", msg.id, msg.len, msg.data[0], msg.data[1], msg.data[2]);
-            }
         }
 
         void _send(uint8_t reg, int16_t data) {
