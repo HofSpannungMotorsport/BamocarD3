@@ -1,7 +1,7 @@
 #include "Registers.h"
 #include "mbed.h"
 
-#define CAN_TIMEOUT 0.1 // s
+#define BAMOCAR_CAN_TIMEOUT 0.1 // s
 
 class BamocarD3 {
     public:
@@ -128,7 +128,7 @@ class BamocarD3 {
             Timer timeout;
             timeout.reset();
             timeout.start();
-            while((msgSendResult != 1) && (timeout < CAN_TIMEOUT)) {
+            while((msgSendResult != 1) && (timeout < BAMOCAR_CAN_TIMEOUT)) {
                 msgSendResult = _can.write(msg);
                 wait(0.000002);
             }
