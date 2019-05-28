@@ -1,5 +1,6 @@
 #include "Registers.h"
 #include "mbed.h"
+#include "TemperaturGraph.h"
 
 #define BAMOCAR_CAN_TIMEOUT 0.1 // s
 
@@ -46,16 +47,16 @@ class BamocarD3 {
             _requestRegister(REG_TEMP_AIR, interval);
         }
 
-        int16_t getMotorTemp() {
-            return _got.TEMP_MOTOR;
+        float getMotorTemp() {
+            return _calcTempFromValue(_got.TEMP_MOTOR, motorTempGraph);
         }
 
-        int16_t getServoTemp() {
-            return _got.TEMP_IGBT;
+        float getServoTemp() {
+            return _calcTempFromValue(_got.TEMP_IGBT, igbtTempGraph);
         }
 
-        int16_t getAirTemp() {
-            return _got.TEMP_AIR;
+        float getAirTemp() {
+            return _calcTempFromValue(_got.TEMP_AIR, airTempGraph);
         }
 
 
@@ -140,5 +141,32 @@ class BamocarD3 {
 
         void _requestRegister(uint8_t reg, uint8_t interval) {
             _send(REG_GIB_MIR_DIE_BUTTER_DU_BITCH, reg, interval);
+        }
+
+        float _map(float x, float in_min, float in_max, float out_min, float out_max) {
+            return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+        }
+
+        float _calcTempFromValue(int16_t value, const int16_t graph[][2]) {
+            uint16_t i = 0;
+
+            // First check if the Value is smaller as the smallest measurement
+            if (value <= graph[0][0]) {
+                return graph[0][1];
+            }
+
+            while(true) {
+                // Check if at the end of array
+                if (graph[i + 1][0] == -1) {
+                    return graph[i][1];
+                }
+
+                // Because we checked before if the the value is the smallest, it is enough to check if the value is smaller then the next value
+                if (value <= graph[i + 1][0]) {
+                    return _map(value, graph[i][0], graph[i + 1][0], graph[i][1], graph[i + 1][1]);
+                } else {
+                    i++;
+                }
+            }
         }
 };
