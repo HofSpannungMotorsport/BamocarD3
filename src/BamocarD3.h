@@ -31,14 +31,32 @@ class BamocarD3 {
 
         void setTorque(float torque) {
             int16_t intTorque = 0;
-            if (torque > 1.5) {
-                intTorque = 0x7FFF;
-            } else if (torque < -1.5) {
-                intTorque = 0x8001;
-            } else {
-                intTorque = torque * 21845;
+
+            if (torque >= 1.0) {
+                intTorque = 32767;
+            } else if (torque <= -1.0 && _reverseEnabled) {
+                intTorque = -32768;
+            } else if (torque > 0) {
+                intTorque = torque * 32767.0;
+                if (intTorque < 0) {
+                    intTorque = 0;
+                }
+            } else if (torque < 0 && _reverseEnabled) {
+                intTorque = torque * 32768.0;
+                if (intTorque > 0) {
+                    intTorque = 0;
+                }
             }
+
             _send(REG_TORQUE, intTorque);
+        }
+
+        void setReverseEnable(bool enable) {
+            _reverseEnabled = enable;
+        }
+
+        void getReverseEnable() {
+            return _reverseEnabled;
         }
 
         void requestTemp(uint8_t interval = 0) {
@@ -62,6 +80,7 @@ class BamocarD3 {
 
     private:
         CAN _can;
+        bool _reverseEnabled = false;
 
         // Motor Controller IDs
         uint16_t _rxId = STD_RX_ID,
