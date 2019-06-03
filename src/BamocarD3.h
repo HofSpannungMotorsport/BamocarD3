@@ -55,7 +55,7 @@ class BamocarD3 {
             _reverseEnabled = enable;
         }
 
-        void getReverseEnable() {
+        bool getReverseEnable() {
             return _reverseEnabled;
         }
 
