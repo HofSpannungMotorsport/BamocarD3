@@ -27,6 +27,8 @@
 #define REG_TEMP_IGBT     0x4A    //Active output stage temperature
 #define REG_TEMP_AIR      0x4B    //Air temperature in the servo
 
+#define REG_DC_VOLTAGE    0xEB
+
 // Request interval Pre-settings
 #define INTVL_IMMEDIATE   0x00
 #define INTVL_SUSPEND     0xFF

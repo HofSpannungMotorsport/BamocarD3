@@ -4,44 +4,60 @@
 
 #define BAMOCAR_CAN_TIMEOUT 0.1 // s
 
+enum model_type_t : uint8_t {
+    BAMOCAR_D3_UNSPECIFYED = 0,
+    BAMOCAR_D3_400V,
+    BAMOCAR_D3_700V,
+};
+
+// Constants for calculations
+#define BAMOCAR_D3_700V_VALUE_TO_VOLTAGE 0.03166076879311998829817985406285 // V per 1
+#define BAMOCAR_D3_400V_VALUE_TO_VOLTAGE 0.01814209030261732308377799596665 // V per 1
+
 class BamocarD3 {
     public:
-        BamocarD3(PinName CAN_RD, PinName CAN_TD, int frequency = STD_BAUD_RATE) : _can(CAN_RD, CAN_TD, frequency) {
+        BamocarD3(PinName CAN_RD, PinName CAN_TD, model_type_t modelType = BAMOCAR_D3_UNSPECIFYED, int frequency = STD_BAUD_RATE) : _can(CAN_RD, CAN_TD, frequency) {
             _can.attach(callback(this, &BamocarD3::_messageReceived), CAN::RxIrq);
+            _modelType = modelType;
         }
 
+        // Request the Speed to be received once or with an interval in ms
         void requestSpeed(uint8_t interval = 0) {
             _requestRegister(REG_N_ACTUAL, interval);
             _requestRegister(REG_N_MAX, interval);
         }
 
+        // Get the Speed last received from the Inverter
         float getSpeed() {
             return (float)_got.N_MAX * ((float)_got.N_ACTUAL / 32767.0);
         }
 
+        // Request the Data required for Current Calculation to be received once or with an interval in ms (3 Messages)
         void requestCurrent(uint8_t interval = 0) {
             _requestRegister(REG_I_ACTUAL, interval);
             _requestRegister(REG_I_DEVICE, interval);
             _requestRegister(REG_I_200PC, interval);
         }
 
+        // Get the calculated Current last received from the Inverter
         float getCurrent() {
             return 0.2 * (float)_got.I_DEVICE * ((float)_got.I_ACTUAL / (float)_got.I_200PC);
         }
 
+        // Set the Torque which then should be applied to the motor (as -1.0 to 1.0 representing -100% to 100% of I max pk)
         void setTorque(float torque) {
             int16_t intTorque = 0;
 
             if (torque >= 1.0) {
                 intTorque = 32767;
-            } else if (torque <= -1.0 && _reverseEnabled) {
+            } else if (torque <= -1.0) {
                 intTorque = -32768;
             } else if (torque > 0) {
                 intTorque = torque * 32767.0;
                 if (intTorque < 0) {
                     intTorque = 0;
                 }
-            } else if (torque < 0 && _reverseEnabled) {
+            } else if (torque < 0) {
                 intTorque = torque * 32768.0;
                 if (intTorque > 0) {
                     intTorque = 0;
@@ -51,48 +67,77 @@ class BamocarD3 {
             _send(REG_TORQUE, intTorque);
         }
 
-        void setReverseEnable(bool enable) {
-            _reverseEnabled = enable;
-        }
-
-        bool getReverseEnable() {
-            return _reverseEnabled;
-        }
-
+        // Request the Temperature to be received once or with an interval in ms (3 Messages)
         void requestTemp(uint8_t interval = 0) {
             _requestRegister(REG_TEMP_MOTOR, interval);
             _requestRegister(REG_TEMP_IGBT, interval);
             _requestRegister(REG_TEMP_AIR, interval);
         }
 
+        // Get the Temperature of the Motor
         float getMotorTemp() {
             return _calcTempFromValue(_got.TEMP_MOTOR, motorTempGraph);
         }
 
+        // Get the Temperature of the Servo
         float getServoTemp() {
             return _calcTempFromValue(_got.TEMP_IGBT, igbtTempGraph);
         }
 
+        // Get the Temperature of the Air (inside of the inverter)
         float getAirTemp() {
             return _calcTempFromValue(_got.TEMP_AIR, airTempGraph);
+        }
+
+        // Request the DC Voltage to be received once or with an interval in ms
+        void requestDcVoltage(uint8_t interval = 0) {
+            _requestRegister(REG_DC_VOLTAGE, interval);
+        }
+
+        // Get the DC Voltage (with a +- 2% accuracy)
+        float getDcVoltage() {
+            if (_modelType == BAMOCAR_D3_700V) {
+                return _got.DC_VOLTAGE * BAMOCAR_D3_700V_VALUE_TO_VOLTAGE;
+            } else if (_modelType == BAMOCAR_D3_400V) {
+                return _got.DC_VOLTAGE * BAMOCAR_D3_400V_VALUE_TO_VOLTAGE;
+            }
+
+            return 0;
+        }
+
+        // Get the Count how many messages delivering the DC Voltage got received
+        uint32_t getDcVoltageGotCount() {
+            return _gotCount.DC_VOLTAGE;
         }
 
 
     private:
         CAN _can;
-        bool _reverseEnabled = false;
+        model_type_t _modelType;
 
         // Motor Controller IDs
         uint16_t _rxId = STD_RX_ID,
                  _txId = STD_TX_ID;
         
+        // The got Values from the Bamocar D3 will be stored here
         struct _got {
             int16_t READY = 0,
                     N_ACTUAL = 0, N_MAX = 0,
                     I_ACTUAL = 0, I_DEVICE = 0, I_200PC = 0,
                     TORQUE = 0,
-                    TEMP_MOTOR = 0, TEMP_IGBT = 0, TEMP_AIR = 0;
+                    TEMP_MOTOR = 0, TEMP_IGBT = 0, TEMP_AIR = 0,
+                    DC_VOLTAGE = 0;
         } _got;
+
+        // The amout of got messages according to a value will be stored here
+        struct _gotCount {
+            uint32_t READY = 0,
+                     N_ACTUAL = 0, N_MAX = 0,
+                     I_ACTUAL = 0, I_DEVICE = 0, I_200PC = 0,
+                     TORQUE = 0,
+                     TEMP_MOTOR = 0, TEMP_IGBT = 0, TEMP_AIR = 0,
+                     DC_VOLTAGE = 0;
+        } _gotCount;
 
         int16_t _getInt16(CANMessage &msg) {
             int16_t returnValue = 0;
@@ -117,16 +162,17 @@ class BamocarD3 {
             while(_can.read(msg)) {
                 if (msg.len == 4) {
                     switch (msg.data[0]) {
-                        case REG_READY: _got.READY = _getInt16(msg); break;
-                        case REG_N_ACTUAL: _got.N_ACTUAL = _getInt16(msg); break;
-                        case REG_N_MAX: _got.N_MAX = _getInt16(msg); break;
-                        case REG_I_ACTUAL: _got.I_ACTUAL = _getInt16(msg); break;
-                        case REG_I_DEVICE: _got.I_DEVICE = _getInt16(msg); break;
-                        case REG_I_200PC: _got.I_200PC = _getInt16(msg); break;
-                        case REG_TORQUE: _got.TORQUE = _getInt16(msg); break;
-                        case REG_TEMP_MOTOR: _got.TEMP_MOTOR = _getInt16(msg); break;
-                        case REG_TEMP_IGBT: _got.TEMP_IGBT = _getInt16(msg); break;
-                        case REG_TEMP_AIR: _got.TEMP_AIR = _getInt16(msg); break;
+                        case REG_READY: _got.READY = _getInt16(msg); ++_gotCount.READY; break;
+                        case REG_N_ACTUAL: _got.N_ACTUAL = _getInt16(msg); ++_gotCount.N_ACTUAL; break;
+                        case REG_N_MAX: _got.N_MAX = _getInt16(msg); ++_gotCount.N_MAX; break;
+                        case REG_I_ACTUAL: _got.I_ACTUAL = _getInt16(msg); ++_gotCount.I_ACTUAL; break;
+                        case REG_I_DEVICE: _got.I_DEVICE = _getInt16(msg); ++_gotCount.I_DEVICE; break;
+                        case REG_I_200PC: _got.I_200PC = _getInt16(msg); ++_gotCount.I_200PC; break;
+                        case REG_TORQUE: _got.TORQUE = _getInt16(msg); ++_gotCount.TORQUE; break;
+                        case REG_TEMP_MOTOR: _got.TEMP_MOTOR = _getInt16(msg); ++_gotCount.TEMP_MOTOR; break;
+                        case REG_TEMP_IGBT: _got.TEMP_IGBT = _getInt16(msg); ++_gotCount.TEMP_IGBT; break;
+                        case REG_TEMP_AIR: _got.TEMP_AIR = _getInt16(msg); ++_gotCount.TEMP_AIR; break;
+                        case REG_DC_VOLTAGE: _got.DC_VOLTAGE = _getInt16(msg); ++_gotCount.DC_VOLTAGE; break;
                     }
                 } else if (msg.len == 6) {
                     // [il]
