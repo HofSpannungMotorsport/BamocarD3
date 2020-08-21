@@ -2,7 +2,10 @@
 #include "mbed.h"
 #include "TemperaturGraph.h"
 
-#define BAMOCAR_CAN_TIMEOUT 0.1 // s
+#define BAMOCAR_CAN_TIMEOUT 0.1 // s On this side (Microcontroller)
+#define BAMOCAR_CAN_T_OUT_SETPOINT 300 // ms After witch the Inverter will stop if no new message came
+#define BAMOCAR_CAN_T_OUT_RESEND 1 // s After which the Timeout will be resent
+#define BAMOCAR_CAN_T_OUT_MAX 60000
 
 enum model_type_t : uint8_t {
     BAMOCAR_D3_UNSPECIFYED = 0,
@@ -19,6 +22,34 @@ class BamocarD3 {
         BamocarD3(PinName CAN_RD, PinName CAN_TD, model_type_t modelType = BAMOCAR_D3_UNSPECIFYED, int frequency = STD_BAUD_RATE) : _can(CAN_RD, CAN_TD, frequency) {
             _can.attach(callback(this, &BamocarD3::_messageReceived), CAN::RxIrq);
             _modelType = modelType;
+        }
+
+        /**
+         * @brief Call this in a loop often
+         * 
+         */
+        void run() {
+            if (_timeout.begun) {
+                if (_timeout.timer.read() > _timeout.resend) {
+                    _sendTimeoutMsg();
+                }
+            }
+        }
+
+        /**
+         * @brief Begin with the communication including timeout setting and start of CAN Message monitoring. Send a CAN message every [timeout] milliseconds to keep inverter "On"
+         * 
+         * @param timeout 
+         * @param timeoutResend 
+         */
+        void begin(uint16_t timeout = BAMOCAR_CAN_T_OUT_SETPOINT, float timeoutResend = BAMOCAR_CAN_T_OUT_RESEND) {
+            if (timeout > BAMOCAR_CAN_T_OUT_MAX)
+                timeout = BAMOCAR_CAN_T_OUT_MAX;
+
+            _timeout.begun = true;
+            _timeout.timer.reset();
+            _timeout.timer.start();
+            _sendTimeoutMsg();
         }
 
         // Request the Speed to be received once or with an interval in ms
@@ -115,12 +146,19 @@ class BamocarD3 {
         CAN _can;
         model_type_t _modelType;
 
+        struct {
+            Timer timer;
+            bool begun = false;
+            uint16_t timeout;
+            float resend;
+        } _timeout;
+
         // Motor Controller IDs
         uint16_t _rxId = STD_RX_ID,
                  _txId = STD_TX_ID;
         
         // The got Values from the Bamocar D3 will be stored here
-        struct _got {
+        struct {
             int16_t READY = 0,
                     N_ACTUAL = 0, N_MAX = 0,
                     I_ACTUAL = 0, I_DEVICE = 0, I_200PC = 0,
@@ -130,7 +168,7 @@ class BamocarD3 {
         } _got;
 
         // The amout of got messages according to a value will be stored here
-        struct _gotCount {
+        struct {
             uint32_t READY = 0,
                      N_ACTUAL = 0, N_MAX = 0,
                      I_ACTUAL = 0, I_DEVICE = 0, I_200PC = 0,
@@ -233,5 +271,9 @@ class BamocarD3 {
                     i++;
                 }
             }
+        }
+
+        void _sendTimeoutMsg() {
+            _send(REG_T_OUT, _timeout.timeout & 0xFF, (_timeout.timeout >> 8) & 0xFF);
         }
 };

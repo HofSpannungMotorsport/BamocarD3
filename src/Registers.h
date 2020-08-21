@@ -29,6 +29,8 @@
 
 #define REG_DC_VOLTAGE    0xEB
 
+#define REG_T_OUT         0xD0
+
 // Request interval Pre-settings
 #define INTVL_IMMEDIATE   0x00
 #define INTVL_SUSPEND     0xFF
