@@ -6,6 +6,7 @@
 #define BAMOCAR_CAN_T_OUT_SETPOINT 300 // ms After witch the Inverter will stop if no new message came
 #define BAMOCAR_CAN_T_OUT_RESEND 1 // s After which the Timeout will be resent
 #define BAMOCAR_CAN_T_OUT_MAX 60000
+#define BAMOCAR_CAN_T_OUT_AUTOSEND_TIME 0.250
 
 enum model_type_t : uint8_t {
     BAMOCAR_D3_UNSPECIFYED = 0,
@@ -39,10 +40,11 @@ class BamocarD3 {
         /**
          * @brief Begin with the communication including timeout setting and start of CAN Message monitoring. Send a CAN message every [timeout] milliseconds to keep inverter "On"
          * 
+         * @param autoSendTimeout Autosend timeout messsage (with ticker) to avoid false cutoff of the inverter
          * @param timeout 
          * @param timeoutResend 
          */
-        void begin(uint16_t timeout = BAMOCAR_CAN_T_OUT_SETPOINT, float timeoutResend = BAMOCAR_CAN_T_OUT_RESEND) {
+        void begin(bool autoSendTimeout = false, float autoSendTime = BAMOCAR_CAN_T_OUT_AUTOSEND_TIME, uint16_t timeout = BAMOCAR_CAN_T_OUT_SETPOINT, float timeoutResend = BAMOCAR_CAN_T_OUT_RESEND) {
             if (timeout > BAMOCAR_CAN_T_OUT_MAX)
                 timeout = BAMOCAR_CAN_T_OUT_MAX;
 
@@ -50,6 +52,10 @@ class BamocarD3 {
             _timeout.timer.reset();
             _timeout.timer.start();
             _sendTimeoutMsg();
+
+            if (autoSendTimeout) {
+                _timeout.autoSender.attach(callback(this, &BamocarD3::_sendTimeoutMsg), autoSendTime);
+            }
         }
 
         // Request the Speed to be received once or with an interval in ms
@@ -148,6 +154,7 @@ class BamocarD3 {
 
         struct {
             Timer timer;
+            Ticker autoSender;
             bool begun = false;
             uint16_t timeout;
             float resend;
