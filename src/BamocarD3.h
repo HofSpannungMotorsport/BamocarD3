@@ -49,6 +49,8 @@ class BamocarD3 {
                 timeout = BAMOCAR_CAN_T_OUT_MAX;
 
             _timeout.begun = true;
+            _timeout.timeout = timeout;
+            _timeout.resend = timeoutResend;
             _timeout.timer.reset();
             _timeout.timer.start();
             _sendTimeoutMsg();
