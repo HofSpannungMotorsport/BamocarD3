@@ -51,9 +51,20 @@ class BamocarD3 {
             _timeout.begun = true;
             _timeout.timeout = timeout;
             _timeout.resend = timeoutResend;
-            _timeout.timer.reset();
-            _timeout.timer.start();
+            _restartTimer(_timeout.timer);
             _sendTimeoutMsg();
+                
+            _restartTimer(_age.READY);
+            _restartTimer(_age.N_ACTUAL);
+            _restartTimer(_age.N_MAX);
+            _restartTimer(_age.I_ACTUAL);
+            _restartTimer(_age.I_DEVICE);
+            _restartTimer(_age.I_200PC);
+            _restartTimer(_age.TORQUE);
+            _restartTimer(_age.TEMP_MOTOR);
+            _restartTimer(_age.TEMP_IGBT);
+            _restartTimer(_age.TEMP_AIR);
+            _restartTimer(_age.DC_VOLTAGE);
 
             if (autoSendTimeout) {
                 _timeout.autoSender.attach(callback(this, &BamocarD3::_sendTimeoutMsg), autoSendTime);
@@ -69,6 +80,11 @@ class BamocarD3 {
         // Get the Speed last received from the Inverter
         float getSpeed() {
             return (float)_got.N_MAX * ((float)_got.N_ACTUAL / 32767.0);
+        }
+
+        // Get age of the Speed Value
+        float getSpeedAge() {
+            return _age.N_ACTUAL.read();
         }
 
         // Request the Data required for Current Calculation to be received once or with an interval in ms (3 Messages)
@@ -118,14 +134,26 @@ class BamocarD3 {
             return _calcTempFromValue(_got.TEMP_MOTOR, motorTempGraph);
         }
 
+        float getMotorTempAge() {
+            return _age.TEMP_MOTOR.read();
+        }
+
         // Get the Temperature of the Servo
         float getServoTemp() {
             return _calcTempFromValue(_got.TEMP_IGBT, igbtTempGraph);
+        }
+        
+        float getServoTempAge() {
+            return _age.TEMP_IGBT.read();
         }
 
         // Get the Temperature of the Air (inside of the inverter)
         float getAirTemp() {
             return _calcTempFromValue(_got.TEMP_AIR, airTempGraph);
+        }
+
+        float getAirTempAge() {
+            return _age.TEMP_AIR.read();
         }
 
         // Request the DC Voltage to be received once or with an interval in ms
@@ -144,9 +172,9 @@ class BamocarD3 {
             return 0;
         }
 
-        // Get the Count how many messages delivering the DC Voltage got received
-        uint32_t getDcVoltageGotCount() {
-            return _gotCount.DC_VOLTAGE;
+        // Get the age of DC Voltage
+        float getDcVoltageAge() {
+            return _age.DC_VOLTAGE.read();
         }
 
 
@@ -176,15 +204,15 @@ class BamocarD3 {
                     DC_VOLTAGE = 0;
         } _got;
 
-        // The amout of got messages according to a value will be stored here
+        // The age of got messages according to a value will be stored here
         struct {
-            uint32_t READY = 0,
-                     N_ACTUAL = 0, N_MAX = 0,
-                     I_ACTUAL = 0, I_DEVICE = 0, I_200PC = 0,
-                     TORQUE = 0,
-                     TEMP_MOTOR = 0, TEMP_IGBT = 0, TEMP_AIR = 0,
-                     DC_VOLTAGE = 0;
-        } _gotCount;
+            Timer READY,
+                  N_ACTUAL, N_MAX,
+                  I_ACTUAL, I_DEVICE, I_200PC,
+                  TORQUE,
+                  TEMP_MOTOR, TEMP_IGBT, TEMP_AIR,
+                  DC_VOLTAGE;
+        } _age;
 
         int16_t _getInt16(CANMessage &msg) {
             int16_t returnValue = 0;
@@ -209,17 +237,17 @@ class BamocarD3 {
             while(_can.read(msg)) {
                 if (msg.len == 4) {
                     switch (msg.data[0]) {
-                        case REG_READY: _got.READY = _getInt16(msg); ++_gotCount.READY; break;
-                        case REG_N_ACTUAL: _got.N_ACTUAL = _getInt16(msg); ++_gotCount.N_ACTUAL; break;
-                        case REG_N_MAX: _got.N_MAX = _getInt16(msg); ++_gotCount.N_MAX; break;
-                        case REG_I_ACTUAL: _got.I_ACTUAL = _getInt16(msg); ++_gotCount.I_ACTUAL; break;
-                        case REG_I_DEVICE: _got.I_DEVICE = _getInt16(msg); ++_gotCount.I_DEVICE; break;
-                        case REG_I_200PC: _got.I_200PC = _getInt16(msg); ++_gotCount.I_200PC; break;
-                        case REG_TORQUE: _got.TORQUE = _getInt16(msg); ++_gotCount.TORQUE; break;
-                        case REG_TEMP_MOTOR: _got.TEMP_MOTOR = _getInt16(msg); ++_gotCount.TEMP_MOTOR; break;
-                        case REG_TEMP_IGBT: _got.TEMP_IGBT = _getInt16(msg); ++_gotCount.TEMP_IGBT; break;
-                        case REG_TEMP_AIR: _got.TEMP_AIR = _getInt16(msg); ++_gotCount.TEMP_AIR; break;
-                        case REG_DC_VOLTAGE: _got.DC_VOLTAGE = _getInt16(msg); ++_gotCount.DC_VOLTAGE; break;
+                        case REG_READY: _got.READY = _getInt16(msg); _restartTimer(_age.READY); break;
+                        case REG_N_ACTUAL: _got.N_ACTUAL = _getInt16(msg); _restartTimer(_age.N_ACTUAL); break;
+                        case REG_N_MAX: _got.N_MAX = _getInt16(msg); _restartTimer(_age.N_MAX); break;
+                        case REG_I_ACTUAL: _got.I_ACTUAL = _getInt16(msg); _restartTimer(_age.I_ACTUAL); break;
+                        case REG_I_DEVICE: _got.I_DEVICE = _getInt16(msg); _restartTimer(_age.I_DEVICE); break;
+                        case REG_I_200PC: _got.I_200PC = _getInt16(msg); _restartTimer(_age.I_200PC); break;
+                        case REG_TORQUE: _got.TORQUE = _getInt16(msg); _restartTimer(_age.TORQUE); break;
+                        case REG_TEMP_MOTOR: _got.TEMP_MOTOR = _getInt16(msg); _restartTimer(_age.TEMP_MOTOR); break;
+                        case REG_TEMP_IGBT: _got.TEMP_IGBT = _getInt16(msg); _restartTimer(_age.TEMP_IGBT); break;
+                        case REG_TEMP_AIR: _got.TEMP_AIR = _getInt16(msg); _restartTimer(_age.TEMP_AIR); break;
+                        case REG_DC_VOLTAGE: _got.DC_VOLTAGE = _getInt16(msg); _restartTimer(_age.DC_VOLTAGE); break;
                     }
                 } else if (msg.len == 6) {
                     // [il]
@@ -284,5 +312,10 @@ class BamocarD3 {
 
         void _sendTimeoutMsg() {
             _send(REG_T_OUT, _timeout.timeout & 0xFF, (_timeout.timeout >> 8) & 0xFF);
+        }
+
+        void _restartTimer(Timer& timer) {
+            timer.reset();
+            timer.start();
         }
 };
