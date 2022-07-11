@@ -8,6 +8,8 @@
 #define BAMOCAR_CAN_T_OUT_MAX 60000
 #define BAMOCAR_CAN_T_OUT_AUTOSEND_TIME 0.250
 
+#define REPORT_CAN_BAMOCAR_ERROR
+
 enum model_type_t : uint8_t {
     BAMOCAR_D3_UNSPECIFYED = 0,
     BAMOCAR_D3_400V,
@@ -20,9 +22,8 @@ enum model_type_t : uint8_t {
 
 class BamocarD3 {
     public:
-        BamocarD3(PinName CAN_RD, PinName CAN_TD, model_type_t modelType = BAMOCAR_D3_UNSPECIFYED, int frequency = STD_BAUD_RATE) : _can(CAN_RD, CAN_TD, frequency) {
+        BamocarD3(PinName CAN_RD, PinName CAN_TD, bool invertTorque = false, model_type_t modelType = BAMOCAR_D3_UNSPECIFYED, int frequency = STD_BAUD_RATE) : _can(CAN_RD, CAN_TD, frequency), _invertTorque(invertTorque), _modelType(modelType) {
             _can.attach(callback(this, &BamocarD3::_messageReceived), CAN::RxIrq);
-            _modelType = modelType;
         }
 
         /**
@@ -34,6 +35,18 @@ class BamocarD3 {
                 if (_timeout.timer.read() > _timeout.resend) {
                     _sendTimeoutMsg();
                 }
+            }
+
+            uint8_t tdError = _can.tderror();
+            uint8_t rdError = _can.rderror();
+            if (tdError > 0 || rdError > 0) {
+                #ifdef REPORT_CAN_BAMOCAR_ERROR
+                pcSerial.printf("[BamocarD3]@run: Detected CAN Error: td: %i\t rd: %i\n", tdError, rdError);
+                #endif
+
+                // Reset to recover from passive mode
+                if (tdError >= 127 || rdError >= 127)
+                    _can.reset();
             }
         }
 
@@ -102,6 +115,8 @@ class BamocarD3 {
         // Set the Torque which then should be applied to the motor (as -1.0 to 1.0 representing -100% to 100% of I max pk)
         void setTorque(float torque) {
             int16_t intTorque = 0;
+
+            if (_invertTorque) torque = -torque;
 
             if (torque >= 1.0) {
                 intTorque = 32767;
@@ -180,6 +195,7 @@ class BamocarD3 {
 
     private:
         CAN _can;
+        bool _invertTorque;
         model_type_t _modelType;
 
         struct {
