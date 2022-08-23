@@ -45,8 +45,9 @@ class BamocarD3 {
                 #endif
 
                 // Reset to recover from passive mode
-                if (tdError >= 127 || rdError >= 127)
-                    _can.reset();
+                if (tdError >= 127 || rdError >= 127) {
+                    //_can.reset(); -> Removed as useless
+                }
             }
         }
 
